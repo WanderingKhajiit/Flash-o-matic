@@ -1,58 +1,69 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useHistory, useParams } from "react-router-dom";
 import { createCard, readDeck } from "../../utils/api/index";
+import SharedForm from "./SharedForm"
 
 function AddCard() {
-    const { deckId } = useParams();
-    const history = useHistory();
-    const initialState = {
-        front: "",
-        back: "",
+    const mountedRef = useRef(false);
+    // Default for new card data
+    const initialFormState = {
+      id: '',
+      front: '',
+      back: '',
+      deckId: '',
     };
-
-    const [newCard, setNewCard] = useState(initialState);
-    const [deck, setDeck] = useState({});
-
+    const [deck, setDeck] = useState({
+      name: 'loading...',
+      description: '',
+      cards: [],
+    });
+    const [newCard, setNewCard] = useState(initialFormState);
+    const history = useHistory();
+    const { deckId } = useParams();
+    // effect just for tracking state
     useEffect(() => {
-        async function fetchData() {
-            const abortController = new AbortController();
-            try {
-                const response = await readDeck(deckId, abortController.signal);
-                setDeck(response);
-            } catch (error) {
-                console.error("Something went wrong", error);
-            }
-            return () => {
-                abortController.abort();
-            };
+      mountedRef.current = true;
+      return () => {
+        mountedRef.current = false;
+      };
+    }, []);
+  
+    // Load deck effect
+    useEffect(() => {
+      const abortController = new AbortController();
+      async function loadDeck() {
+        try {
+          const loadedDeck = await readDeck(deckId, abortController.signal);
+          if (mountedRef.current) {
+            setDeck(() => loadedDeck);
+          }
+        } catch (error) {
+          if (error.name !== 'AbortError') {
+            throw error;
+          }
         }
-        fetchData();
+      }
+      loadDeck();
+      return () => {
+        abortController.abort();
+      };
     }, [deckId]);
-
-    function handleChange({ target }) {
-        setNewCard({
-            ...newCard,
-            [target.name]: target.value,
-        });
-    }
-
-    async function handleSubmit(event) {
-        event.preventDefault();
-        const abortController = new AbortController();
-        const response = await createCard(
-            deckId,
-            { ...newCard },
-            abortController.signal
-        );
-        history.go(0);
-        setNewCard(initialState);
-        return response;
-    }
-
-    async function handleDone() {
-        history.push(`/decks/${deckId}`);
-    }
-
+  
+    // change handler for new card data changes
+    const handleChange = ({ target }) => {
+      setNewCard((currentState) => ({
+        ...currentState,
+        [target.name]: target.value,
+      }));
+    };
+  
+    
+    const handleSubmit = async (event) => {
+      event.preventDefault();
+      await createCard(deckId, newCard);
+      setNewCard(initialFormState);
+      history.go(0);
+    };
     return (
         <div>
             <ol className="breadcrumb">
@@ -64,40 +75,7 @@ function AddCard() {
                 </li>
                 <li className="breadcrumb-item active">Add Card</li>
             </ol>
-            <form onSubmit={handleSubmit}>
-                <h2>{deck.name}: Add Card</h2>
-                <div className="form-group">
-                    <label>Front</label>
-                    <textarea
-                        id="front"
-                        name="front"
-                        className="form-control"
-                        onChange={handleChange}
-                        type="text"
-                        value={newCard.front}
-                    />
-                </div>
-                <div className="form-group">
-                    <label>Back</label>
-                    <textarea
-                        id="back"
-                        name="back"
-                        className="form-control"
-                        onChange={handleChange}
-                        type="text"
-                        value={newCard.back}
-                    />
-                </div>
-                <button
-                    className="btn btn-secondary mx-1"
-                    onClick={() => handleDone()}
-                >
-                    Done
-                </button>
-                <button className="btn btn-primary mx-1" type="submit">
-                    Save
-                </button>
-            </form>
+            <SharedForm changeHandler={handleChange} submitHandler={handleSubmit} deckId={deckId} newCardData={newCard}/>
         </div>
     );
 }
